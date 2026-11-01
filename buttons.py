@@ -37,6 +37,9 @@ CATS = [
         ("💳 Click ulash", "wiz", "click"), ("💳 Click yoq/o'ch", "toggle", "click_on"),
         ("💳 Karta rekviziti", "set", "pay_info"), ("🧾 Chek rejimi yoq/o'ch", "toggle", "manual_pay"),
         ("⏱ Schot muddati (daq)", "set", "tc_ttl"),
+        ("🔗 Schot yaratish yo'li", "set", "tc_p_create"), ("🔗 Schot holati yo'li", "set", "tc_p_status"),
+        ("🔏 Imzo yoq/o'ch", "toggle", "tc_sign"),
+        ("⭐ Stars yoq/o'ch", "toggle", "stars_on"), ("⭐ Stars kursi (so'm)", "set", "star_rate"),
         ("💼 Tezcheck balansi", "fn", f_tc_balance), ("🧪 Ulanishni tekshirish", "fn", f_tc_test),
     ]),
     ("👤 Userlar", [
@@ -57,9 +60,12 @@ CATS = [
     ("📢 Xabarlar", [
         ("📢 Hammaga xabar", "bc", "all"), ("💎 Faollarga xabar", "bc", "active"),
         ("⌛ Tugaganlarga xabar", "bc", "expired"), ("🤝 Hamkorlarga xabar", "bc", "partners"),
-        ("👋 Salomlashuv matni", "set", "welcome_text"), ("📖 Qo'llanma matni", "set", "guide_text"),
-        ("❓ Savol-javob matni", "set", "faq_text"), ("📜 Shartlar matni", "set", "terms_text"),
-        ("🆘 Yordam matni", "set", "support_text"), ("🤝 Hamkorlik matni", "set", "partner_text"),
+        ("👋 Salomlashuv matni", "rt", "welcome_text"), ("📖 Qo'llanma matni", "rt", "guide_text"),
+        ("❓ Savol-javob matni", "rt", "faq_text"), ("📜 Shartlar matni", "rt", "terms_text"),
+        ("🆘 Yordam matni", "rt", "support_text"), ("🤝 Hamkorlik matni", "rt", "partner_text"),
+        ("🔗 Referal matni", "rt", "ref_text"),
+        ("➕ Qo'llanma qo'shish", "gnew", ""), ("✏️ Qo'llanmani tahrirlash", "op", "gedit", "Qo'llanma raqamini (#id) yuboring. Ro'yxat: «📋 Qo'llanmalar ro'yxati»"),
+        ("🗑 Qo'llanmani o'chirish", "op", "gdel", "Qo'llanma raqamini (#id) yuboring."), ("📋 Qo'llanmalar ro'yxati", "fn", f_guides),
     ]),
     ("⚙️ Sozlamalar", [
         ("🔌 Bot yoq/o'ch", "toggle", "bot_on"), ("🆕 Ro'yxat yoq/o'ch", "toggle", "reg_on"),
