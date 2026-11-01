@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS channels(id INTEGER PRIMARY KEY AUTOINCREMENT, chat T
 CREATE TABLE IF NOT EXISTS btn_style(orig TEXT PRIMARY KEY, style TEXT);
 CREATE TABLE IF NOT EXISTS btn_name(orig TEXT PRIMARY KEY, new TEXT UNIQUE);
 CREATE TABLE IF NOT EXISTS btn_icon(orig TEXT PRIMARY KEY, eid TEXT);
+CREATE TABLE IF NOT EXISTS rich_media(k TEXT PRIMARY KEY, mtype TEXT, fid TEXT);
+CREATE TABLE IF NOT EXISTS guides(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, text TEXT, mtype TEXT, fid TEXT);
 """
 # eski bazalar bilan moslik: yetishmayotgan ustunlarni avtomatik qo'shadi
 MIGRATE = {
@@ -59,7 +61,8 @@ DEF = {
     "price_7": "7000", "price_30": "20000", "price_90": "50000", "price_365": "180000",
     "partner_price": "100000", "ref_percent": "10", "topup_bonus": "0",
     "min_topup": "5000", "max_topup": "5000000", "trial_days": "30", "cache_days": "30",
-    "tc_base": "https://tezcheck.uz/api", "tc_key": "", "tc_kassa": "", "tc_ttl": "30",
+    "tc_base": "https://api.tezcheck.uz/api/merchant/v1", "tc_key": "", "tc_kassa": "", "tc_ttl": "30", "tc_sign": "1",
+    "tc_p_balance": "/balance", "tc_p_create": "/bills", "tc_p_status": "/bills/{id}", "stars_on": "1", "star_rate": "200",
     "click_token": "", "click_on": "0", "pay_info": "Karta: 0000 0000 0000 0000 (Ism Familiya)",
     "autopay": "0", "manual_pay": "1", "bot_on": "1", "reg_on": "1", "trial_on": "1",
     "notify_deleted": "1", "notify_edited": "1", "save_media": "1", "partner_on": "1", "ref_on": "1",
@@ -76,10 +79,11 @@ DEF = {
     "terms_text": "📜 <b>Shartlar</b>\nBotdan faqat o'z suhbatlaringizda va qonunga muvofiq foydalaning. "
                   "Boshqalarning shaxsiy ma'lumotlarini tarqatish taqiqlanadi.",
     "support_text": "🆘 Yordam uchun adminga yozing.",
+    "ref_text": "🔗 <b>Referal dasturi</b>\nDo'stlaringizni taklif qiling — ularning har bir xarididan sizga ulush tushadi.",
     "partner_text": "🤝 <b>Hamkorlik</b>\nHamkor bo'ling: o'z botingizni oling va uni to'liq o'zingiz boshqaring (admin panel, narxlar, to'lov).",
 }
 NUM = {"price_7", "price_30", "price_90", "price_365", "partner_price", "ref_percent", "topup_bonus",
-       "min_topup", "max_topup", "trial_days", "cache_days", "tc_ttl"}
+       "min_topup", "max_topup", "trial_days", "cache_days", "tc_ttl", "star_rate"}
 BOTS, STATE, ROUTES, HOOKS = {}, {}, {}, {}
 ctx = threading.local()
 
@@ -96,6 +100,9 @@ def open_db(path):
     if not c.execute("SELECT 1 FROM settings WHERE k='mig_trial30'").fetchone():     # eski standart (1 kun) → 30 kun, bir marta
         c.execute("UPDATE settings SET v='30' WHERE k='trial_days' AND v='1'")
         c.execute("INSERT INTO settings VALUES('mig_trial30','1')")
+    if not c.execute("SELECT 1 FROM settings WHERE k='mig_tcbase'").fetchone():      # eski noto'g'ri Tezcheck manzili → rasmiy manzil
+        c.execute("UPDATE settings SET v=? WHERE k='tc_base' AND v='https://tezcheck.uz/api'", (DEF['tc_base'],))
+        c.execute("INSERT INTO settings VALUES('mig_tcbase','1')")
     c.commit()
     return c
 
@@ -144,7 +151,7 @@ def num(k):
     except ValueError: return 0.0
 
 
-def esc(x): return html.escape(str(x if x not in (None, "") else "—"))
+def esc(x): return html.escape(str(x if x not in (None, "") else "—"), quote=False)
 def money(x): return f"{int(round(float(x))):,}".replace(",", " ")
 def dt(ts): return time.strftime("%d.%m.%Y %H:%M", time.localtime(ts)) if ts > time.time() else "tugagan"
 def U(uid): return q("SELECT * FROM users WHERE id=?", (uid,), True)
