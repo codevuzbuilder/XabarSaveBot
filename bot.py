@@ -6,7 +6,8 @@ from ui import *
 from pay import *
 from ops import *
 import user, buttons
-from biz import BizMixin
+from biz import BizMixin, MEDIA
+from texts import rich_state, guides_handle, rich_key
 from design import design_handle
 from history import history_handle
 
@@ -67,6 +68,20 @@ class Bot(BizMixin):
                 p.pop("parse_mode"); r = s.call("sendMessage", **p)
             if r is None and rows and not s.noicons and s._icon_err():
                 s.noicons = True; p["reply_markup"] = kb(rows); r = s.call("sendMessage", **p)
+        return r
+
+    def send_media(s, chat, mtype, fid, caption=None, rows=None):
+        """Rasm / video / dumaloq video / GIF yuboradi. Klaviatura shu xabarga biriktiriladi."""
+        meth, key = MEDIA[mtype]
+        p = {"chat_id": chat, key: fid}
+        if caption and mtype != "video_note": p.update(caption=caption[:1024], parse_mode="HTML")
+        with using(s):
+            if rows: p["reply_markup"] = kb(rows)
+            r = s.call(meth, **p)
+            if r is None and "parse entities" in s.err:
+                p.pop("parse_mode", None); r = s.call(meth, **p)
+            if r is None and rows and not s.noicons and s._icon_err():
+                s.noicons = True; p["reply_markup"] = kb(rows); r = s.call(meth, **p)
         return r
 
     def send_inline(s, chat, text, rows):
@@ -146,10 +161,12 @@ class Bot(BizMixin):
         if t0.startswith("/start"):
             if new and g("trial_on") == "1" and num("trial_days") > 0:
                 s.send(uid, f"🎁 Sizga <b>{int(num('trial_days'))} kun bepul</b> foydalanish berildi!")
-            return s.menu(uid, g("welcome_text"))
+            STATE.pop(uid, None)
+            return rich_key(s, uid, "welcome_text", main_rows(uid))
         st = STATE.get(uid)
         if st and st[0] in DZ_STATES and is_admin(uid) and design_handle(s, uid, t0, m, st): return
         if st and st[0] == "hist" and history_handle(s, uid, t0, st): return
+        if st and st[0] == "guides" and guides_handle(s, uid, t0, st): return
         mt = re.match(r"/(ok|no)_(\d+)$", t0)
         if mt and is_admin(uid): return s.receipt_decision(uid, mt.group(1), int(mt.group(2)))
         t = resolve(t0)
@@ -181,6 +198,11 @@ class Bot(BizMixin):
             if st[1] == "receipt":
                 STATE[uid] = ("receipt", amt)
                 return s.send(uid, f"{esc(g('pay_info'))}\n\n💵 {money(amt)} so'm o'tkazing va <b>chek rasmini</b> yuboring.", back)
+            if st[1] == "stars":
+                STATE.pop(uid, None)
+                n = stars_invoice(s, uid, amt)
+                return s.send(uid, f"⭐ Hisob-fakturani to'lang ({n} Stars). To'lovdan so'ng balans avtomatik to'ldiriladi." if n
+                              else "⚠️ Stars vaqtincha ishlamayapti. Boshqa usulni tanlang.", main_rows(uid))
             if st[1] == "click":
                 STATE.pop(uid, None)
                 if click_invoice(s, uid, amt): s.send(uid, "💳 Hisob-fakturani to'lang. To'lovdan so'ng balans avtomatik to'ldiriladi.", main_rows(uid))
@@ -236,10 +258,13 @@ class Bot(BizMixin):
             try: out = OPS[st[1]](s, t.split(), t)
             except (ValueError, IndexError): return s.send(uid, f"❌ Format noto'g'ri.\n{st[3]}")
             STATE.pop(uid, None)
+            if isinstance(out, tuple): STATE[uid] = out[1]; out = out[2]      # keyingi bosqichga o'tish (masalan, qo'llanmani tahrirlash)
             s.send(uid, out)
         elif k == "bc" and is_admin(uid):
             STATE.pop(uid, None)
             broadcast(s, uid, st[1], t)
+        elif k in ("rt", "gnew1", "gnew2", "ge") and is_admin(uid):
+            rich_state(s, uid, st, m)
         elif k == "wiz" and is_admin(uid):
             wizard_step(s, uid, st, m)
         else:
