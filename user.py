@@ -4,6 +4,7 @@ from core import *
 from ui import *
 from pay import *
 from ops import *
+from texts import *
 
 
 # ----------------------------- foydalanuvchi tugmalari -----------------------------
@@ -59,6 +60,7 @@ def r_topup(s, uid, m):
     rows = []
     if g("autopay") == "1" and g("tc_key") and g("tc_kassa"): rows.append([("⚡ Avto to'lov", "success")])
     if g("click_on") == "1" and g("click_token"): rows.append([("💳 Click orqali", "success")])
+    if g("stars_on") == "1": rows.append([("⭐ Stars orqali", "success")])
     if g("manual_pay") == "1": rows.append([("🧾 Chek bilan to'lov", "primary")])
     if not rows: return s.send(uid, "❌ To'lov usullari hozircha o'chirilgan.", main_rows(uid))
     rows.append([("🏠 Menyu", "")])
@@ -74,6 +76,7 @@ def _ask_amount(method):
 
 ROUTES["⚡ Avto to'lov"] = _ask_amount("tc")
 ROUTES["💳 Click orqali"] = _ask_amount("click")
+ROUTES["⭐ Stars orqali"] = _ask_amount("stars")
 ROUTES["🧾 Chek bilan to'lov"] = _ask_amount("receipt")
 
 
@@ -121,8 +124,9 @@ def r_promo(s, uid, m):
 def r_ref(s, uid, m):
     if g("ref_on") != "1": return s.send(uid, "🔗 Referal dasturi hozircha o'chirilgan.", main_rows(uid))
     n = q("SELECT COUNT(*) c FROM users WHERE referrer=?", (uid,), True)["c"]
-    s.send(uid, f"🔗 Havolangiz:\nhttps://t.me/{s.username}?start=ref_{uid}\n\n👥 Taklif qilinganlar: {n}\n"
-                f"🎁 Ularning har bir xarididan {g('ref_percent')}% balansingizga tushadi.", main_rows(uid))
+    rich_key(s, uid, "ref_text", main_rows(uid),
+             extra=f"\n\n🔗 Havolangiz:\nhttps://t.me/{s.username}?start=ref_{uid}\n\n👥 Taklif qilinganlar: {n}\n"
+                   f"🎁 Ularning har bir xarididan {g('ref_percent')}% balansingizga tushadi.")
 
 
 @route("🤝 Hamkorlik")
@@ -132,8 +136,8 @@ def r_partner(s, uid, m):
     if u["is_partner"]:
         return s.send(uid, "🤝 Siz hamkorsiz.\n«🤖 Mening botim» orqali o'z botingizni yarating — unda <b>⚙️ Admin panel</b> "
                            "to'liq sizniki: narxlar, to'lov tizimlari, kanallar, dizayn.", main_rows(uid))
-    s.send(uid, f"{g('partner_text')}\n\n💎 Narxi: {money(num('partner_price'))} so'm (balansdan)\n💰 Balansingiz: {money(u['balance'])}",
-           [[("✅ Hamkor bo'lish", "success")], [("🏠 Menyu", "")]])
+    rich_key(s, uid, "partner_text", [[("✅ Hamkor bo'lish", "success")], [("🏠 Menyu", "")]],
+             extra=f"\n\n💎 Narxi: {money(num('partner_price'))} so'm (balansdan)\n💰 Balansingiz: {money(u['balance'])}")
 
 
 @route("✅ Hamkor bo'lish")
