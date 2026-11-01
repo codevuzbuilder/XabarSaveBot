@@ -3,6 +3,7 @@ import os, sys, io, csv, time, html, sqlite3
 from core import *
 from ui import *
 from pay import *
+from texts import *
 
 
 def _list(rows, fmt, empty="—"):
@@ -134,8 +135,7 @@ def f_tc_balance(s, uid):
 def f_tc_test(s, uid):
     miss = [n for n, k in (("Hisob API", "tc_key"), ("Kassa API", "tc_kassa"), ("API manzil", "tc_base")) if not g(k)]
     if miss: return "❌ Sozlanmagan: " + ", ".join(miss) + "\n«⚡ Avto to'lov ulash» tugmasini bosing."
-    try: return f"✅ Ulanish ishlayapti. Balans: {esc(tc_balance())}"
-    except Exception as e: return f"❌ Ulanish xatosi: {esc(e)}"
+    return "🧪 <b>Tezcheck tekshiruvi</b>\n" + tc_diag()
 
 
 # ----------------------------- amallar (ID/matn qabul qiladiganlar) -----------------------------
@@ -265,7 +265,7 @@ OPS = {k[3:]: v for k, v in globals().items() if k.startswith("op_") and callabl
 # ----------------------------- admin tugmasini bajarish -----------------------------
 def btn_style(it):
     if any(e in it[0] for e in "🗑🚫➖🧹"): return "danger"
-    return {"set": "primary", "toggle": "success", "op": "primary", "bc": "primary", "wiz": "success", "dz": "success"}.get(it[1], "primary")
+    return {"set": "primary", "toggle": "success", "op": "primary", "bc": "primary", "wiz": "success", "dz": "success", "rt": "primary", "gnew": "success"}.get(it[1], "primary")
 
 
 def run_item(s, uid, it):
@@ -293,24 +293,13 @@ def run_item(s, uid, it):
         s.send(uid, f"{label}\nYuboriladigan matnni yozing:")
     elif kind == "wiz":
         wizard_start(s, uid, a)
+    elif kind in ("rt", "gnew"):
+        rich_start(s, uid, kind, a, label)
     elif kind == "dz":
         HOOKS["design"](s, uid, a)
 
 
 # ----------------------------- foydalanuvchining kichik tugmalari -----------------------------
-def _toggle(col, label):
-    def f(s, uid, m):
-        u = U(uid)
-        v = 0 if u[col] else 1
-        run(f"UPDATE users SET {col}=? WHERE id=?", (v, uid))
-        s.send(uid, f"{label}: {'✅ yoqildi' if v else '❌ o‘chirildi'}", main_rows(uid))
-    return f
-
-
-ROUTES["🔔 O'chirilganlar"] = _toggle("n_del", "🔔 O'chirilgan xabarlar")
-ROUTES["✏️ Tahrirlanganlar"] = _toggle("n_edit", "✏️ Tahrirlangan xabarlar")
-
-
 @route("📊 Statistikam")
 def r_stats(s, uid, m):
     n = q("SELECT COUNT(*) c FROM msgs WHERE owner=?", (uid,), True)["c"]
@@ -324,6 +313,5 @@ def r_clear(s, uid, m):
     s.send(uid, f"🗑 {n} ta xabar keshdan o'chirildi.", main_rows(uid))
 
 
-for _lab, _key in (("📖 Qo'llanma", "guide_text"), ("❓ Savol-javob", "faq_text"),
-                   ("🆘 Yordam", "support_text"), ("📜 Shartlar", "terms_text")):
-    ROUTES[_lab] = (lambda key: lambda s, uid, m: s.send(uid, g(key), main_rows(uid)))(_key)
+for _lab, _key in (("❓ Savol-javob", "faq_text"), ("🆘 Yordam", "support_text"), ("📜 Shartlar", "terms_text")):
+    ROUTES[_lab] = (lambda key: lambda s, uid, m: rich_key(s, uid, key, main_rows(uid)))(_key)
