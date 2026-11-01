@@ -95,8 +95,7 @@ def main_rows(uid):
             ["📅 Obunam", "🧾 To'lovlarim"],
             [("🎁 Promokod", "primary"), ("🔗 Referal", "primary")]]
     if is_main(): rows.append([("🤝 Hamkorlik", "success"), ("🤖 Mening botim", "primary")])
-    rows += [["🔔 O'chirilganlar", "✏️ Tahrirlanganlar"],
-             [("🕘 Tarixim", "success"), "📊 Statistikam"],
+    rows += [[("🕘 Tarixim", "success"), "📊 Statistikam"],
              [("🗑 Keshni tozalash", "danger"), "📖 Qo'llanma"],
              ["❓ Savol-javob", "🆘 Yordam"], ["📜 Shartlar"]]
     if is_admin(uid): rows.append([("⚙️ Admin panel", "danger")])
