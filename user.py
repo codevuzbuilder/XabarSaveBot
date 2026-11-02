@@ -24,7 +24,7 @@ def r_connect(s, uid, m):
                        "4) <b>Xabarlarni o'qish</b> ruxsatini yoqing.\n\n"
                        "🔥 <b>O'chib ketuvchi rasm/video:</b> uni OCHISHDAN OLDIN unga istalgan javob (reply) yozing — "
                        "bot nusxasini sizga yuboradi.",
-                  [[("📲 Botni ulash", "tg://settings/edit_profile", "primary")],
+                  [[("📲 Botni ulash", "tg://settings/edit", "primary")],
                    [("🤖 Bot sahifasi", f"https://t.me/{s.username}", "success")]])
 
 
