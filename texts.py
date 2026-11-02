@@ -38,6 +38,7 @@ def parse_msg(m):
     elif m.get("video"): mt, fid = "video", m["video"]["file_id"]
     elif m.get("video_note"): mt, fid = "video_note", m["video_note"]["file_id"]
     elif m.get("animation"): mt, fid = "animation", m["animation"]["file_id"]
+    elif m.get("voice"): mt, fid = "voice", m["voice"]["file_id"]
     raw = m.get("text") or m.get("caption") or ""
     return (to_html(raw, m.get("entities") or m.get("caption_entities") or []) if raw else ""), mt, fid
 
@@ -63,7 +64,7 @@ def rich_start(s, uid, kind, key="", label=""):
     if kind == "rt":
         STATE[uid] = ("rt", key, label)
         s.send(uid, f"✏️ <b>{esc(label)}</b>\n\n• Yangi <b>matn</b> yuboring (qalin, kursiv, havola formatlari saqlanadi).\n"
-                    f"• <b>Rasm / video / dumaloq video</b> qo'shish: shu turdagi xabarni yuboring (matn — izoh sifatida).\n"
+                    f"• <b>Rasm / video / dumaloq video / ovozli xabar</b> qo'shish: shu turdagi xabarni yuboring (matn — izoh sifatida).\n"
                     f"• Mediani olib tashlash: <code>media-o'chirish</code>\n\nHozirgi matn:\n{g(key)}")
     else:
         STATE[uid] = ("gnew1",)
@@ -77,7 +78,7 @@ def rich_state(s, uid, st, m):
         title = (m.get("text") or "").strip()
         if not title or len(title) > 40: return s.send(uid, "❌ Sarlavha 1–40 belgi bo'lsin. Qayta yozing:")
         STATE[uid] = ("gnew2", title)
-        return s.send(uid, f"✅ Sarlavha: <b>{esc(title)}</b>\n2/2 — qo'llanma <b>matnini</b> yuboring. Rasm/video/dumaloq video ham "
+        return s.send(uid, f"✅ Sarlavha: <b>{esc(title)}</b>\n2/2 — qo'llanma <b>matnini</b> yuboring. Rasm/video/dumaloq video/ovozli xabar ham "
                            f"qo'shsangiz bo'ladi (matn — izoh sifatida).")
     if k in ("rt", "ge") and raw in REMOVE:
         if k == "rt": run("DELETE FROM rich_media WHERE k=?", (st[1],))
