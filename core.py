@@ -27,7 +27,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS settings(k TEXT PRIMARY KEY, v TEXT);
 CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, partner_id INTEGER, referrer INTEGER, sub_until INTEGER DEFAULT 0,
   is_partner INTEGER DEFAULT 0, balance REAL DEFAULT 0, banned INTEGER DEFAULT 0, n_del INTEGER DEFAULT 1,
-  n_edit INTEGER DEFAULT 1, joined INTEGER DEFAULT 0, via TEXT);
+  n_edit INTEGER DEFAULT 1, joined INTEGER DEFAULT 0, via TEXT, lang TEXT DEFAULT 'uz', name TEXT);
 CREATE TABLE IF NOT EXISTS conns(id TEXT PRIMARY KEY, user_id INTEGER);
 CREATE TABLE IF NOT EXISTS msgs(cid TEXT, chat INTEGER, mid INTEGER, owner INTEGER, who TEXT, kind TEXT, text TEXT,
   fid TEXT, ts INTEGER, mine INTEGER DEFAULT 0, deleted INTEGER DEFAULT 0, old_text TEXT, chat_name TEXT,
@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS channels(id INTEGER PRIMARY KEY AUTOINCREMENT, chat T
 CREATE TABLE IF NOT EXISTS btn_style(orig TEXT PRIMARY KEY, style TEXT);
 CREATE TABLE IF NOT EXISTS btn_name(orig TEXT PRIMARY KEY, new TEXT UNIQUE);
 CREATE TABLE IF NOT EXISTS btn_icon(orig TEXT PRIMARY KEY, eid TEXT);
+CREATE TABLE IF NOT EXISTS inline_urls(k TEXT PRIMARY KEY, url TEXT);
 CREATE TABLE IF NOT EXISTS rich_media(k TEXT PRIMARY KEY, mtype TEXT, fid TEXT);
 CREATE TABLE IF NOT EXISTS guides(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, text TEXT, mtype TEXT, fid TEXT);
 """
@@ -50,7 +51,8 @@ CREATE TABLE IF NOT EXISTS guides(id INTEGER PRIMARY KEY AUTOINCREMENT, title TE
 MIGRATE = {
     "users": {"partner_id": "INTEGER", "referrer": "INTEGER", "sub_until": "INTEGER DEFAULT 0",
               "is_partner": "INTEGER DEFAULT 0", "balance": "REAL DEFAULT 0", "banned": "INTEGER DEFAULT 0",
-              "n_del": "INTEGER DEFAULT 1", "n_edit": "INTEGER DEFAULT 1", "joined": "INTEGER DEFAULT 0", "via": "TEXT"},
+              "n_del": "INTEGER DEFAULT 1", "n_edit": "INTEGER DEFAULT 1", "joined": "INTEGER DEFAULT 0", "via": "TEXT",
+              "lang": "TEXT DEFAULT 'uz'", "name": "TEXT"},
     "promos": {"owner": "INTEGER"},
     "msgs": {"ts": "INTEGER DEFAULT 0", "mine": "INTEGER DEFAULT 0", "deleted": "INTEGER DEFAULT 0",
              "old_text": "TEXT", "chat_name": "TEXT"},
@@ -61,10 +63,11 @@ DEF = {
     "price_7": "7000", "price_30": "20000", "price_90": "50000", "price_365": "180000",
     "partner_price": "100000", "ref_percent": "10", "topup_bonus": "0",
     "min_topup": "5000", "max_topup": "5000000", "trial_days": "30", "cache_days": "30",
-    "tc_base": "https://api.tezcheck.uz/api/merchant/v1", "tc_key": "", "tc_kassa": "", "tc_ttl": "30", "tc_sign": "1",
-    "tc_p_balance": "/balance", "tc_p_create": "/bills", "tc_p_status": "/bills/{id}", "stars_on": "1", "star_rate": "200",
+    "tc_ttl": "30", "stars_on": "1", "star_rate": "200",
+    "co_base": "https://checkout.uz/api/v2", "co_key": "", "co_on": "0", "co_p_create": "/payments", "co_p_status": "/payments/{id}", "co_p_balance": "/balance",
+    "ip_base": "https://inpay.uz/api/v1", "ip_key": "", "ip_merchant": "", "ip_on": "0", "ip_p_create": "/invoices", "ip_p_status": "/invoices/{id}",
     "click_token": "", "click_on": "0", "pay_info": "Karta: 0000 0000 0000 0000 (Ism Familiya)",
-    "autopay": "0", "manual_pay": "1", "bot_on": "1", "reg_on": "1", "trial_on": "1",
+    "manual_pay": "1", "bot_on": "1", "reg_on": "1", "trial_on": "1",
     "notify_deleted": "1", "notify_edited": "1", "save_media": "1", "partner_on": "1", "ref_on": "1",
     "promo_on": "1", "notify_admin_new": "1", "force_sub": "0", "icons_on": "1", "log_chat": "",
     "welcome_text": "👋 Salom! Men chatlaringizdagi o'chirilgan va tahrirlangan xabarlarni (media bilan) sizga yetkazaman.\n\n"
@@ -100,9 +103,6 @@ def open_db(path):
     if not c.execute("SELECT 1 FROM settings WHERE k='mig_trial30'").fetchone():     # eski standart (1 kun) → 30 kun, bir marta
         c.execute("UPDATE settings SET v='30' WHERE k='trial_days' AND v='1'")
         c.execute("INSERT INTO settings VALUES('mig_trial30','1')")
-    if not c.execute("SELECT 1 FROM settings WHERE k='mig_tcbase'").fetchone():      # eski noto'g'ri Tezcheck manzili → rasmiy manzil
-        c.execute("UPDATE settings SET v=? WHERE k='tc_base' AND v='https://tezcheck.uz/api'", (DEF['tc_base'],))
-        c.execute("INSERT INTO settings VALUES('mig_tcbase','1')")
     c.commit()
     return c
 
@@ -204,37 +204,39 @@ def unsub(s, uid):
     return out
 
 
-def reg(uid, ref=None):
+def reg(uid, ref=None, lang=None, name=None):
     if U(uid): return False
     if g("reg_on") != "1" and not is_admin(uid): return None
     trial = int(num("trial_days") * 86400) if g("trial_on") == "1" else 0
     r = ref if (ref and ref != uid and g("ref_on") == "1" and U(ref)) else None
-    run("INSERT INTO users(id,referrer,sub_until,joined) VALUES(?,?,?,?)", (uid, r, int(time.time()) + trial, int(time.time())))
+    run("INSERT INTO users(id,referrer,sub_until,joined,lang,name) VALUES(?,?,?,?,?,?)",
+        (uid, r, int(time.time()) + trial, int(time.time()), lang or "uz", name))
     return True
 
 
 def shares(u, price):
+    """Referal ulushini balansga qo'shadi. Qaytaradi: [(referrer_id, summa)] — xabarni chaqiruvchi yuboradi."""
+    out = []
     if u["referrer"] and g("ref_on") == "1":
         x = price * num("ref_percent") / 100
         if x > 0:
             run("UPDATE users SET balance=balance+? WHERE id=?", (x, u["referrer"]))
-            notify(u["referrer"], f"🎉 Referalingiz xaridi uchun +{money(x)} so'm balansingizga tushdi.")
+            out.append((u["referrer"], x))
+    return out
 
 
 def redeem(uid, code):
-    if g("promo_on") != "1": return "🎁 Promokodlar hozircha o'chirilgan."
+    """Promokod: (xabar_kaliti, ma'lumot) qaytaradi — tarjimani chaqiruvchi qiladi."""
+    if g("promo_on") != "1": return "promo_off", {}
     p = q("SELECT * FROM promos WHERE code=?", (code,), True)
-    if not p or not p["active"] or p["used"] >= p["lim"]: return "❌ Promokod topilmadi yoki tugagan."
-    if not run("INSERT OR IGNORE INTO promo_uses VALUES(?,?)", (code, uid)): return "ℹ️ Bu promokodni allaqachon ishlatgansiz."
+    if not p or not p["active"] or p["used"] >= p["lim"]: return "promo_bad", {}
+    if not run("INSERT OR IGNORE INTO promo_uses VALUES(?,?)", (code, uid)): return "promo_used", {}
     run("UPDATE promos SET used=used+1 WHERE code=?", (code,))
     if p["days"]:
         u = U(uid)
         run("UPDATE users SET sub_until=? WHERE id=?", (max(int(time.time()), u["sub_until"]) + p["days"] * 86400, uid))
     if p["money"]: run("UPDATE users SET balance=balance+? WHERE id=?", (p["money"], uid))
-    got = []
-    if p["days"]: got.append(f"{p['days']} kun obuna")
-    if p["money"]: got.append(f"{money(p['money'])} so'm")
-    return "🎉 Promokod faollashdi: " + " + ".join(got)
+    return "promo_ok", {"days": p["days"], "money": p["money"]}
 
 
 def broadcast(s, uid, group, text):
