@@ -8,12 +8,14 @@ from ops import *
 import user, buttons
 from biz import BizMixin, MEDIA
 from texts import rich_state, guides_handle, rich_key
+from i18n import *
+from user import lang_handle
 from design import design_handle
 from history import history_handle
 
 UPDATES = ["message", "business_connection", "business_message", "edited_business_message",
            "deleted_business_messages", "pre_checkout_query"]
-DZ_STATES = ("dzarea", "dz", "dzname", "dzemoji")
+DZ_STATES = ("dzarea", "dz", "dzname", "dzemoji", "dzinline", "dzinline_edit")
 
 
 class Bot(BizMixin):
@@ -123,6 +125,9 @@ class Bot(BizMixin):
                 if s.partner: main_bot().send(s.partner, "⚠️ Botingiz tokeni yaroqsiz (bekor qilingan), bot to'xtatildi. Yangi token bilan qayta qo'shing.")
                 main_bot().send(ADMIN_ID, f"⚠️ Klon bot (hamkor {s.partner}) tokeni yaroqsiz — o'chirildi.")
 
+    def _lang(s, uid):
+        u = U(uid); return u["lang"] if u and u["lang"] in CODES else "uz"
+
     def handle(s, u):
         with using(s):
             if "business_connection" in u: return s.conn(u["business_connection"])
@@ -138,33 +143,38 @@ class Bot(BizMixin):
         s.send(uid, text, main_rows(uid))
 
     def gate_msg(s, uid, chans):
-        rows = [[(f"📢 {c['title'][:28]}", channel_link(c), "primary")] for c in chans if channel_link(c)]
-        text = "📢 Botdan foydalanish uchun quyidagi kanallarga a'zo bo'ling:\n" + "\n".join(f"• {esc(c['title'])}" for c in chans)
-        if rows: s.send_inline(uid, text, rows)
+        rows = [[f"inline:ch:{c['id']}" if channel_link(c) else c["title"] for c in chans[i:i+1]] for i in range(len(chans)) if channel_link(chans[i])]
+        irows = [[(f"inline:ch:{c['id']}", channel_link(c), "primary")] for c in chans if channel_link(c)]
+        text = tr("gate", uid) + "\n" + "\n".join(f"• {esc(c['title'])}" for c in chans)
+        if irows: s.send_inline(uid, text, irows)
         else: s.send(uid, text)
-        s.send(uid, "A'zo bo'lgach pastdagi tugmani bosing 👇", [[("✅ A'zo bo'ldim", "success")]])
+        s.send(uid, tr("gate_hint", uid), [[("✅ A'zo bo'ldim", "success")]])
 
     def msg(s, m):
         if m["chat"]["type"] != "private": return
         if "successful_payment" in m: return successful_payment(s, m)
         uid, t0 = m["from"]["id"], (m.get("text") or "").strip()
         if not is_admin(uid) and g("bot_on") != "1":
-            return s.send(uid, "🔧 Bot vaqtincha o'chirilgan. Keyinroq urinib ko'ring.")
+            return s.send(uid, tr("bot_off"))
         ref = int(t0[11:]) if t0.startswith("/start ref_") and t0[11:].isdigit() else None
-        new = reg(uid, ref)
-        if new is None: return s.send(uid, "🔒 Hozircha ro'yxatdan o'tish yopiq.")
-        if U(uid)["banned"]: return s.send(uid, "🚫 Siz bloklangansiz.")
+        f = m.get("from", {})
+        guess = AUTO.get(f.get("language_code", ""), "uz")
+        new = reg(uid, ref, lang=guess, name=(f.get("first_name") or "")[:60])
+        if new is None: return s.send(uid, tr("reg_closed"))
+        ctx.lang = s._lang(uid)
+        if U(uid)["banned"]: return s.send(uid, tr("banned"))
         if new and g("notify_admin_new") == "1" and uid != s.owner:
             s.send(s.owner, f"🆕 Yangi foydalanuvchi: <code>{uid}</code> ({esc(m['from'].get('first_name'))})")
         chans = unsub(s, uid)
         if chans: return s.gate_msg(uid, chans)
         if t0.startswith("/start"):
             if new and g("trial_on") == "1" and num("trial_days") > 0:
-                s.send(uid, f"🎁 Sizga <b>{int(num('trial_days'))} kun bepul</b> foydalanish berildi!")
+                s.send(uid, tr("trial", uid, days=int(num("trial_days"))))
             STATE.pop(uid, None)
             return rich_key(s, uid, "welcome_text", main_rows(uid))
         st = STATE.get(uid)
         if st and st[0] in DZ_STATES and is_admin(uid) and design_handle(s, uid, t0, m, st): return
+        if st and st[0] == "lang" and lang_handle(s, uid, t0, st): return
         if st and st[0] == "hist" and history_handle(s, uid, t0, st): return
         if st and st[0] == "guides" and guides_handle(s, uid, t0, st): return
         mt = re.match(r"/(ok|no)_(\d+)$", t0)
@@ -197,41 +207,45 @@ class Bot(BizMixin):
                 return s.send(uid, f"❌ Summa {money(num('min_topup'))} dan {money(num('max_topup'))} gacha bo'lsin.", back)
             if st[1] == "receipt":
                 STATE[uid] = ("receipt", amt)
-                return s.send(uid, f"{esc(g('pay_info'))}\n\n💵 {money(amt)} so'm o'tkazing va <b>chek rasmini</b> yuboring.", back)
+                return s.send(uid, tr("receipt_ask", uid, info=esc(g("pay_info")), amt=money(amt)), back)
             if st[1] == "stars":
                 STATE.pop(uid, None)
                 n = stars_invoice(s, uid, amt)
-                return s.send(uid, f"⭐ Hisob-fakturani to'lang ({n} Stars). To'lovdan so'ng balans avtomatik to'ldiriladi." if n
-                              else "⚠️ Stars vaqtincha ishlamayapti. Boshqa usulni tanlang.", main_rows(uid))
+                return s.send(uid, tr("stars_sent", uid, n=n) if n else tr("pay_fail", uid), main_rows(uid))
             if st[1] == "click":
                 STATE.pop(uid, None)
-                if click_invoice(s, uid, amt): s.send(uid, "💳 Hisob-fakturani to'lang. To'lovdan so'ng balans avtomatik to'ldiriladi.", main_rows(uid))
-                else: s.send(uid, "⚠️ Click vaqtincha ishlamayapti. Boshqa usulni tanlang.", main_rows(uid))
+                if click_invoice(s, uid, amt): s.send(uid, tr("invoice_sent", uid), main_rows(uid))
+                else: s.send(uid, tr("pay_fail", uid), main_rows(uid))
                 return
+            gw = "co" if st[1] == "checkout" else "ip"
             pid = ins("INSERT INTO payments(user_id,kind,amount,via,method,ts) VALUES(?,?,?,?,?,?)",
-                      (uid, "topup", amt, s.t, "tc", int(time.time())))
+                      (uid, "topup", amt, s.t, st[1], int(time.time())))
             try:
-                ext, url = tc_create(pid, amt)
+                ext, url = gw_create(gw, pid, amt)
                 run("UPDATE payments SET ext_id=?, url=? WHERE id=?", (ext, url, pid))
                 STATE.pop(uid, None)
-                s.send(uid, f"⚡ <b>To'lov #{pid}</b>\n💵 {money(amt)} so'm\n⏱ {int(num('tc_ttl'))} daqiqa ichida to'lang:\n{url}\n\n"
-                            f"To'lovdan so'ng hisob avtomatik to'ldiriladi.", [[("✅ To'lovni tekshirish", "success")], [("🏠 Menyu", "")]])
+                s.send(uid, tr("invoice_link", uid, pid=pid, amt=money(amt), ttl=int(num("tc_ttl")), url=url),
+                       [[("✅ To'lovni tekshirish", "success")], [("🏠 Menyu", "")]])
             except Exception as e:
                 elog(); run("UPDATE payments SET status='failed' WHERE id=?", (pid,))
-                s.send(uid, "⚠️ To'lov tizimi vaqtincha ishlamayapti. Keyinroq urinib ko'ring.", main_rows(uid))
-                s.send(s.owner, f"⚠️ Tezcheck xatosi: {esc(e)}")
+                s.send(uid, tr("pay_fail", uid), main_rows(uid))
+                s.send(s.owner, f"⚠️ {NAMES.get(gw, gw)} xatosi: {esc(e)}")
         elif k == "receipt":
-            if not m.get("photo"): return s.send(uid, "🧾 Chek rasmini yuboring.", back)
+            if not m.get("photo"): return s.send(uid, tr("receipt_photo", uid), back)
             amt = st[1]
             pid = ins("INSERT INTO payments(user_id,kind,amount,via,method,ts) VALUES(?,?,?,?,?,?)",
                       (uid, "topup", amt, s.t, "receipt", int(time.time())))
             s.call("sendPhoto", chat_id=s.owner, photo=m["photo"][-1]["file_id"],
                    caption=f"🧾 To'lov #{pid}\n👤 {uid}\n💵 {money(amt)} so'm\n\n✅ /ok_{pid}\n❌ /no_{pid}")
             STATE.pop(uid, None)
-            s.send(uid, "✅ Chek adminga yuborildi. Tasdiqlangach xabar keladi.", main_rows(uid))
+            s.send(uid, tr("receipt_sent", uid), main_rows(uid))
         elif k == "promo":
             STATE.pop(uid, None)
-            s.send(uid, redeem(uid, t.upper()), main_rows(uid))
+            key, kw = redeem(uid, t.upper())
+            if key == "promo_ok":
+                got = " + ".join(filter(None, [tr("days_sub", uid, d=kw["days"]) if kw.get("days") else "", money(kw["money"]) + " so'm" if kw.get("money") else ""]))
+                s.send(uid, tr("promo_ok", uid, got=got), main_rows(uid))
+            else: s.send(uid, tr(key, uid), main_rows(uid))
         elif k == "token" and is_main():
             s.call("deleteMessage", chat_id=uid, message_id=m["message_id"])
             try: me = requests.get(f"https://api.telegram.org/bot{t}/getMe", timeout=20).json()
