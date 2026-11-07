@@ -1,7 +1,10 @@
 """design.py — dizayn: tugma ranglari (ko'k → yashil → qizil), nomlarini tahrirlash va premium emoji."""
 from core import *
 from ui import *
+from i18n import *
 from buttons import admin_rows, cat_rows, cats
+
+INLINE = {"inline:connect": "📲 Botni ulash", "inline:bot": "🤖 Bot sahifasi"}
 
 MODES = {
     "color": "🎨 <b>Tugma ranglari</b>\nTugma ustiga bosing — rangi o'zgaradi: 🔵 ko'k → 🟢 yashil → 🔴 qizil → 🔵 ...",
@@ -32,6 +35,13 @@ def _labels(rows): return [x if isinstance(x, str) else x[0] for r in rows for x
 
 def design_start(s, uid, mode):
     STATE[uid] = ("dzarea", mode)
+    if mode == "inline":
+        STATE[uid] = ("dzinline",)
+        # ko'rinadigan nomlar bilan menyu
+        display_names = list(INLINE.values())
+        chrows = [display_names[i:i+2] for i in range(0, len(display_names), 2)] + [[(DONE, "success")]]
+        s.send(uid, "✏️ <b>Inline tugmalar</b>\nQaysi tugmani tahrirlaysiz?", chrows)
+        return
     s.send(uid, MODES[mode] + "\n\nQaysi bo'lim tugmalarini o'zgartirasiz?", chooser_rows())
 
 
@@ -43,6 +53,30 @@ def show_area(s, uid, mode, key, note=""):
 def design_handle(s, uid, t, m, st):
     """Dizayn rejimidagi xabarni qayta ishlaydi. True — xabar shu yerda ishlatildi."""
     k = st[0]
+    if k == "dzinline":
+        if match_label(t, [DONE]): STATE.pop(uid, None); s.send(uid, "✅ Saqlandi.", admin_rows()); return True
+        # ko'rinadigan nom bo'yicha ichki kalitni topamiz
+        rev = {v: k for k,v in INLINE.items()}
+        from ui import strip_lead
+        orig = rev.get(t) or rev.get(strip_lead(t))
+        if not orig:
+            # resolve() orqali asl nom
+            from ui import resolve
+            ro = resolve(t)
+            orig = rev.get(ro) or rev.get(strip_lead(ro))
+        if not orig: s.send(uid, "Ro'yxatdan tugmani tanlang."); return True
+        STATE[uid] = ("dzinline_edit", orig)
+        cur_url = q("SELECT url FROM inline_urls WHERE k=?", (orig,), True)
+        s.send(uid, f"✏️ «{orig}» tugmasi uchun <b>yangi URL</b> kiriting (standartga: <code>tiklash</code>).\n"
+                   f"Hozirgi: {cur_url['url'] if cur_url else '(standart)'}"); return True
+    if k == "dzinline_edit":
+        orig = st[1]
+        if t.strip().lower() == "tiklash":
+            run("DELETE FROM inline_urls WHERE k=?", (orig,))
+            STATE.pop(uid, None); s.send(uid, f"✅ «{orig}» standartga qaytarildi.", admin_rows()); return True
+        if not t.strip().startswith(("http", "tg://")): s.send(uid, "❌ URL http:// yoki tg:// bilan boshlanishi kerak."); return True
+        run("INSERT OR REPLACE INTO inline_urls VALUES(?,?)", (orig, t.strip()))
+        STATE.pop(uid, None); s.send(uid, f"✅ «{orig}» → {t.strip()}", admin_rows()); return True
     if k == "dzarea":
         if match_label(t, [DONE]):
             STATE.pop(uid, None); s.send(uid, "✅ Dizayn saqlandi.", admin_rows()); return True
