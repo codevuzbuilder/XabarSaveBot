@@ -4,6 +4,7 @@ from core import *
 from ui import *
 from pay import *
 from texts import *
+from i18n import *
 
 
 def _list(rows, fmt, empty="—"):
@@ -127,15 +128,14 @@ def f_csv_pay(s, uid):
          ["id", "user_id", "kind", "amount", "status", "method", "ext_id", "ts"])
 
 
-def f_tc_balance(s, uid):
-    try: return f"💼 Tezcheck balansi: <b>{esc(tc_balance())}</b>"
-    except Exception as e: return f"❌ Hisob API xatosi: {esc(e)}"
+def f_co_test(s, uid):
+    if not g("co_key"): return "❌ Checkout.uz API kaliti kiritilmagan. «⚡ Checkout.uz ulash» tugmasini bosing."
+    return "🧪 <b>Checkout.uz tekshiruvi</b>\n" + gw_diag("co")
 
 
-def f_tc_test(s, uid):
-    miss = [n for n, k in (("Hisob API", "tc_key"), ("Kassa API", "tc_kassa"), ("API manzil", "tc_base")) if not g(k)]
-    if miss: return "❌ Sozlanmagan: " + ", ".join(miss) + "\n«⚡ Avto to'lov ulash» tugmasini bosing."
-    return "🧪 <b>Tezcheck tekshiruvi</b>\n" + tc_diag()
+def f_ip_test(s, uid):
+    if not g("ip_key") or not g("ip_merchant"): return "❌ InPay Merchant ID/token kiritilmagan. «⚡ InPay ulash» tugmasini bosing."
+    return "🧪 <b>InPay tekshiruvi</b>\n" + gw_diag("ip")
 
 
 # ----------------------------- amallar (ID/matn qabul qiladiganlar) -----------------------------
@@ -276,7 +276,7 @@ def run_item(s, uid, it):
         s.send(uid, f"{label}: <b>{money(v)}</b>")
     elif kind == "set":
         STATE[uid] = ("set", a, label)
-        shown = "••••••" if a in ("tc_key", "tc_kassa", "click_token") and g(a) else g(a)
+        shown = "••••••" if a in ("co_key", "ip_key", "click_token") and g(a) else g(a)
         s.send(uid, f"✏️ {label}\nHozirgi: <code>{esc(shown)}</code>\n\nYangi qiymatni yuboring:")
     elif kind == "toggle":
         v = "0" if g(a) == "1" else "1"
@@ -304,13 +304,13 @@ def run_item(s, uid, it):
 def r_stats(s, uid, m):
     n = q("SELECT COUNT(*) c FROM msgs WHERE owner=?", (uid,), True)["c"]
     c = q("SELECT COUNT(*) c FROM conns WHERE user_id=?", (uid,), True)["c"]
-    s.send(uid, f"📊 Keshdagi xabarlar: {n}\n🔗 Ulangan akkaunt: {c}\n📅 Obuna: {dt(U(uid)['sub_until'])}", main_rows(uid))
+    s.send(uid, tr("stats", n=n, c=c, sub=dt(U(uid)["sub_until"])), main_rows(uid))
 
 
 @route("🗑 Keshni tozalash")
 def r_clear(s, uid, m):
     n = run("DELETE FROM msgs WHERE owner=?", (uid,))
-    s.send(uid, f"🗑 {n} ta xabar keshdan o'chirildi.", main_rows(uid))
+    s.send(uid, tr("cache_cleared", n=n), main_rows(uid))
 
 
 for _lab, _key in (("❓ Savol-javob", "faq_text"), ("🆘 Yordam", "support_text"), ("📜 Shartlar", "terms_text")):
