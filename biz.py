@@ -1,6 +1,7 @@
 """biz.py — Telegram Business: ulangan akkauntdagi xabarlarni saqlash, o'chirilgan/tahrirlanganlarni yetkazish, o'chib ketuvchi mediani saqlash."""
 import time
 from core import *
+from i18n import *
 
 MEDIA = {"photo": ("sendPhoto", "photo"), "video": ("sendVideo", "video"), "voice": ("sendVoice", "voice"),
          "video_note": ("sendVideoNote", "video_note"), "document": ("sendDocument", "document"),
@@ -24,8 +25,7 @@ class BizMixin:
         if c.get("is_enabled"):
             reg(uid)
             q("INSERT OR REPLACE INTO conns VALUES(?,?)", (c["id"], uid))
-            s.send(c["user_chat_id"], "✅ Akkaunt ulandi. O'chirilgan va tahrirlangan xabarlar shu yerga keladi.\n\n"
-                                      "🔥 O'chib ketuvchi rasm/videoni saqlash uchun uni OCHISHDAN OLDIN unga istalgan javob (reply) yozing.")
+            s.send(c["user_chat_id"], tr("conn_ok", uid))
         else:
             q("DELETE FROM conns WHERE id=?", (c["id"],))
 
@@ -47,12 +47,12 @@ class BizMixin:
         kind, fid = media(r)
         if not (kind and fid and g("save_media") == "1" and active(owner)): return
         who = (r.get("from") or {}).get("first_name") or "suhbatdosh"
-        cap = f"🔥 Saqlandi: <b>{esc(who)}</b> yuborgan media" + (f"\n{esc(r.get('caption'))}" if r.get("caption") else "")
+        cap = tr("saved", owner, who=esc(who)) + (f"\n{esc(r.get('caption'))}" if r.get("caption") else "")
         meth, key = MEDIA[kind]
         if s.call(meth, chat_id=owner, **{key: fid}, caption=cap, parse_mode="HTML") is None:
             data = s.fetch_file(fid)
             if data and s.upload(meth, key, FILE_NAMES.get(kind, "file"), data, chat_id=owner, caption=cap, parse_mode="HTML"): return
-            s.send(owner, "⚠️ Mediani saqlab bo'lmadi: Telegram faylni bermadi. Keyingi safar mediani OCHISHDAN OLDIN javob yozing.")
+            s.send(owner, tr("save_fail", owner))
 
     def find(s, cid, chat, mid):
         return q("SELECT * FROM msgs WHERE cid=? AND chat=? AND mid=?", (cid, chat, mid), True)
@@ -62,7 +62,7 @@ class BizMixin:
         if not r: return
         new, u = m.get("text") or m.get("caption"), U(r["owner"])
         if not r["mine"] and u and u["n_edit"] and g("notify_edited") == "1" and active(r["owner"]):
-            s.send(r["owner"], f"✏️ <b>{esc(r['who'])}</b> xabarni tahrirladi\n\n<b>Eski:</b> {esc(r['text'])}\n<b>Yangi:</b> {esc(new)}")
+            s.send(r["owner"], tr("edited", r["owner"], who=esc(r["who"]), old=esc(r["text"]), new=esc(new)))
         q("UPDATE msgs SET old_text=COALESCE(old_text, text), text=? WHERE cid=? AND chat=? AND mid=?", (new, r["cid"], r["chat"], r["mid"]))
 
     def bdel(s, d):
@@ -72,7 +72,7 @@ class BizMixin:
             q("UPDATE msgs SET deleted=1 WHERE cid=? AND chat=? AND mid=?", (r["cid"], r["chat"], r["mid"]))
             u = U(r["owner"])
             if r["mine"] or not (u and u["n_del"] and g("notify_deleted") == "1" and active(r["owner"])): continue
-            s.send(r["owner"], f"🗑 <b>{esc(r['who'])}</b> xabarni o'chirdi:\n{esc(r['text'])}")
+            s.send(r["owner"], tr("deleted", r["owner"], who=esc(r["who"]), text=esc(r["text"])))
             if r["kind"] and r["fid"]:
                 meth, key = MEDIA[r["kind"]]
                 s.call(meth, chat_id=r["owner"], **{key: r["fid"]})
