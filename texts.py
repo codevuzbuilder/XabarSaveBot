@@ -10,7 +10,6 @@ _TAGS = {"bold": ("<b>", "</b>"), "italic": ("<i>", "</i>"), "underline": ("<u>"
 
 
 def to_html(text, entities):
-    """Telegram formatlash (qalin, kursiv, havola...) ni HTML ga o'tkazadi. Offsetlar UTF-16 birliklarida."""
     if not entities: return html.escape(text, quote=False)
     opens, closes = {}, {}
     for e in entities:
@@ -21,7 +20,6 @@ def to_html(text, entities):
         a, b = e["offset"], e["offset"] + e["length"]
         opens.setdefault(a, []).append((b, o)); closes.setdefault(b, []).append((a, c))
     out, pos = [], 0
-
     def flush(p):
         for _, c in sorted(closes.get(p, []), key=lambda x: -x[0]): out.append(c)
         for _, o in sorted(opens.get(p, []), key=lambda x: -x[0]): out.append(o)
@@ -32,7 +30,6 @@ def to_html(text, entities):
 
 
 def parse_msg(m):
-    """Xabardan (HTML matn, media turi, file_id) ni ajratadi."""
     mt = fid = None
     if m.get("photo"): mt, fid = "photo", m["photo"][-1]["file_id"]
     elif m.get("video"): mt, fid = "video", m["video"]["file_id"]
@@ -44,7 +41,6 @@ def parse_msg(m):
 
 
 def send_rich(s, uid, text, mtype=None, fid=None, rows=None):
-    """Matnni (ixtiyoriy media bilan) yuboradi. Klaviatura oxirgi xabarga biriktiriladi; media yuborilmasa matn yuboriladi."""
     text = text or ""
     if mtype and fid:
         if mtype == "video_note" or not text or len(text) > 1000:
@@ -78,8 +74,8 @@ def rich_state(s, uid, st, m):
         title = (m.get("text") or "").strip()
         if not title or len(title) > 40: return s.send(uid, "❌ Sarlavha 1–40 belgi bo'lsin. Qayta yozing:")
         STATE[uid] = ("gnew2", title)
-        return s.send(uid, f"✅ Sarlavha: <b>{esc(title)}</b>\n2/2 — qo'llanma <b>matnini</b> yuboring. Rasm/video/dumaloq video/ovozli xabar ham "
-                           f"qo'shsangiz bo'ladi (matn — izoh sifatida).")
+        return s.send(uid, f"✅ Sarlavha: <b>{esc(title)}</b>\n2/2 — qo'llanma <b>matnini</b> yuboring. "
+                           f"Rasm/video/dumaloq video/ovozli xabar ham qo'shsangiz bo'ladi (matn — izoh sifatida).")
     if k in ("rt", "ge") and raw in REMOVE:
         if k == "rt": run("DELETE FROM rich_media WHERE k=?", (st[1],))
         else: run("UPDATE guides SET mtype=NULL, fid=NULL WHERE id=?", (st[1],))
@@ -108,7 +104,6 @@ def rich_state(s, uid, st, m):
         return rich_key(s, uid, key)
 
 
-# ----------------------------- qo'llanmalar (bir nechta) -----------------------------
 def f_guides(s, uid):
     return "📋 Qo'llanmalar (asosiy qo'llanmadan tashqari):\n" + ("\n".join(
         f"• #{r['id']} {esc(r['title'])}" + (f" [{r['mtype']}]" if r["mtype"] else "") for r in q("SELECT * FROM guides ORDER BY id")) or "—")
@@ -136,15 +131,14 @@ def r_guide(s, uid, m):
         labels[lab if lab not in labels else f"{lab} #{r['id']}"] = r["id"]
     ks = list(labels)
     STATE[uid] = ("guides", labels)
-    rich_key(s, uid, "guide_text", [ks[i:i + 2] for i in range(0, len(ks), 2)] + [[("🏠 Menyu", "")]])
+    rich_key(s, uid, "guide_text", [ks[i:i + 2] for i in range(0, len(ks), 2)] + [["🏠 Menyu"]])
 
 
 def guides_handle(s, uid, t, st):
-    """True — xabar shu yerda ishlatildi (tanlangan qo'llanma yuborildi)."""
     lab = match_label(t, list(st[1]))
     if not lab: return False
     r = q("SELECT * FROM guides WHERE id=?", (st[1][lab],), True)
     if not r: return False
     ks = list(st[1])
-    send_rich(s, uid, r["text"], r["mtype"], r["fid"], [ks[i:i + 2] for i in range(0, len(ks), 2)] + [[("🏠 Menyu", "")]])
+    send_rich(s, uid, r["text"], r["mtype"], r["fid"], [ks[i:i + 2] for i in range(0, len(ks), 2)] + [["🏠 Menyu"]])
     return True
