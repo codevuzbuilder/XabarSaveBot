@@ -2,6 +2,7 @@
 import re, time
 from core import *
 from ui import *
+from i18n import *
 import pdfgen
 
 KINDS = {"photo": "rasm", "video": "video", "voice": "ovozli xabar", "video_note": "video xabar",
@@ -13,15 +14,14 @@ def r_hist(s, uid, m):
     rows = q("SELECT chat, MAX(chat_name) AS name, COUNT(*) AS n, MAX(ts) AS last FROM msgs WHERE owner=? "
              "GROUP BY chat ORDER BY last DESC LIMIT 12", (uid,))
     if not rows:
-        return s.send(uid, "🕘 Hali saqlangan yozishmalar yo'q. Akkauntni ulang — chatlardagi xabarlar shu yerda yig'ila boshlaydi.",
-                      main_rows(uid))
+        return s.send(uid, tr("hist_empty"), main_rows(uid))
     labels = {}
     for i, r in enumerate(rows, 1):
         lab = f"👤 {(r['name'] or str(r['chat']))[:22]} ({r['n']})"
         labels[lab if lab not in labels else f"{lab} #{i}"] = r["chat"]
     ks = list(labels)
     STATE[uid] = ("hist", labels)
-    s.send(uid, "🕘 <b>Tarix</b>\nQaysi shaxsiy chat yozishmalarini PDF qilib olmoqchisiz?",
+    s.send(uid, tr("hist_pick"),
            [ks[i:i + 2] for i in range(0, len(ks), 2)] + [[("🏠 Menyu", "")]])
 
 
@@ -54,12 +54,12 @@ def history_handle(s, uid, t, st):
     """True — xabar shu yerda ishlatildi; False — oddiy tugma sifatida davom ettiriladi."""
     lab = match_label(t, list(st[1]))
     if not lab:
-        return resolve(t) not in ROUTES and (s.send(uid, "Ro'yxatdan chatni tanlang yoki «🏠 Menyu» ni bosing.") or True)
+        return resolve(t) not in ROUTES and (s.send(uid, tr("hist_hint")) or True)
     chat = st[1][lab]
     STATE.pop(uid, None)
-    s.send(uid, "⏳ PDF tayyorlanmoqda…")
+    s.send(uid, tr("hist_wait"))
     data, name, n = build_pdf(s, uid, chat)
     fname = "tarix_" + re.sub(r"[^A-Za-z0-9_-]+", "_", pdfgen.clean(name)).strip("_") + ".pdf"
     s.upload("sendDocument", "document", fname, data, chat_id=uid, caption=f"🕘 {pdfgen.clean(name)} — {n} ta xabar")
-    s.send(uid, "✅ Tarix PDF fayli yuborildi.", main_rows(uid))
+    s.send(uid, tr("hist_done"), main_rows(uid))
     return True
