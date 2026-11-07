@@ -1,39 +1,32 @@
-"""user.py — foydalanuvchi tugmalari: obuna, balans, to'lov, promokod, referal, hamkorlik."""
+"""user.py — foydalanuvchi tugmalari (8 tilda): profil, til, obuna, to'lov, promokod, referal, hamkorlik."""
 import time
 from core import *
+from i18n import *
 from ui import *
 from pay import *
 from ops import *
 from texts import *
 
 
-# ----------------------------- foydalanuvchi tugmalari -----------------------------
 @route("🏠 Menyu")
 def r_home(s, uid, m): s.menu(uid)
 
 
 @route("✅ A'zo bo'ldim")
-def r_joined(s, uid, m): s.menu(uid, "✅ Rahmat! Botdan foydalanishingiz mumkin.")
+def r_joined(s, uid, m): s.menu(uid, tr("joined"))
 
 
 @route("📲 Botni ulash")
 def r_connect(s, uid, m):
-    s.send_inline(uid, "📲 <b>Botni ulash</b>\n1) Pastdagi tugmani bosing — Telegram profil sozlamalari ochiladi.\n"
-                       "2) <b>Chatlarni avtomatlashtirish</b> (Chat automation) bo'limini tanlang.\n"
-                       f"3) <code>@{s.username}</code> ni kiriting va chatlarni tanlang.\n"
-                       "4) <b>Xabarlarni o'qish</b> ruxsatini yoqing.\n\n"
-                       "🔥 <b>O'chib ketuvchi rasm/video:</b> uni OCHISHDAN OLDIN unga istalgan javob (reply) yozing — "
-                       "bot nusxasini sizga yuboradi.",
-                  [[("📲 Botni ulash", "tg://settings/edit", "primary")],
-                   [("🤖 Bot sahifasi", f"https://t.me/{s.username}", "success")]])
+    s.send_inline(uid, tr("connect", bot=s.username),
+                  [[("inline:connect", "tg://settings/edit", "primary")], [("inline:bot", f"https://t.me/{s.username}", "success")]])
 
 
 @route("💎 Obuna olish")
 def r_plans(s, uid, m):
     u = U(uid)
-    s.send(uid, "💎 <b>Tariflar</b> (balansdan yechiladi)\n" +
-           "\n".join(f"🛒 {d} kun — {money(num(f'price_{d}'))} so'm" for d in (7, 30, 90, 365)) +
-           f"\n\n💰 Balansingiz: {money(u['balance'])} so'm",
+    lst = "\n".join(tr("plan_line", d=d, price=money(num(f"price_{d}"))) for d in (7, 30, 90, 365))
+    s.send(uid, tr("plans", list=lst, bal=money(u["balance"])),
            [[("🛒 7 kun", "success"), ("🛒 30 kun", "success")], [("🛒 90 kun", "success"), ("🛒 365 kun", "success")],
             [("💳 Balans to'ldirish", "primary"), ("🏠 Menyu", "")]])
 
@@ -42,12 +35,11 @@ def _buy(days):
     def f(s, uid, m):
         price, u = num(f"price_{days}"), U(uid)
         if u["balance"] < price:
-            return s.send(uid, f"❌ Balans yetarli emas.\n💰 Balans: {money(u['balance'])}\n🛒 Narx: {money(price)}\n\n"
-                               f"«💳 Balans to'ldirish» tugmasini bosing.")
+            return s.send(uid, tr("nobal", bal=money(u["balance"]), price=money(price), btn=lab("💳 Balans to'ldirish")))
         until = max(int(time.time()), u["sub_until"]) + days * 86400
         run("UPDATE users SET balance=balance-?, sub_until=? WHERE id=?", (price, until, uid))
-        shares(u, price)
-        s.send(uid, f"✅ Obuna {days} kun ga faollashdi!\n📅 Tugash: {dt(until)}", main_rows(uid))
+        for ref, x in shares(u, price): notify(ref, tr("ref_bonus", ref, x=money(x)))
+        s.send(uid, tr("bought", d=days, until=dt(until)), main_rows(uid))
         log(f"🛒 {uid} — {days} kun ({money(price)} so'm)")
     return f
 
@@ -58,80 +50,108 @@ for _d in (7, 30, 90, 365): ROUTES[f"🛒 {_d} kun"] = _buy(_d)
 @route("💳 Balans to'ldirish")
 def r_topup(s, uid, m):
     rows = []
-    if g("autopay") == "1" and g("tc_key") and g("tc_kassa"): rows.append([("⚡ Avto to'lov", "success")])
+    if g("co_on") == "1" and g("co_key"): rows.append([("⚡ Checkout orqali", "success")])
+    if g("ip_on") == "1" and g("ip_key"): rows.append([("⚡ InPay orqali", "success")])
     if g("click_on") == "1" and g("click_token"): rows.append([("💳 Click orqali", "success")])
     if g("stars_on") == "1": rows.append([("⭐ Stars orqali", "success")])
     if g("manual_pay") == "1": rows.append([("🧾 Chek bilan to'lov", "primary")])
-    if not rows: return s.send(uid, "❌ To'lov usullari hozircha o'chirilgan.", main_rows(uid))
+    if not rows: return s.send(uid, tr("no_methods"), main_rows(uid))
     rows.append([("🏠 Menyu", "")])
-    s.send(uid, f"💳 To'lov usulini tanlang.\nMin: {money(num('min_topup'))} • Max: {money(num('max_topup'))} so'm", rows)
+    s.send(uid, tr("topup_menu", min=money(num("min_topup")), max=money(num("max_topup"))), rows)
 
 
 def _ask_amount(method):
     def f(s, uid, m):
         STATE[uid] = ("amt", method)
-        s.send(uid, "💵 To'ldirish summasini yozing (so'mda):", [[("🏠 Menyu", "")]])
+        s.send(uid, tr("ask_amount"), [[("🏠 Menyu", "")]])
     return f
 
 
-ROUTES["⚡ Avto to'lov"] = _ask_amount("tc")
-ROUTES["💳 Click orqali"] = _ask_amount("click")
-ROUTES["⭐ Stars orqali"] = _ask_amount("stars")
-ROUTES["🧾 Chek bilan to'lov"] = _ask_amount("receipt")
+for _lbl, _meth in (("⚡ Checkout orqali", "checkout"), ("⚡ InPay orqali", "inpay"), ("💳 Click orqali", "click"),
+                    ("⭐ Stars orqali", "stars"), ("🧾 Chek bilan to'lov", "receipt")):
+    ROUTES[_lbl] = _ask_amount(_meth)
 
 
 @route("✅ To'lovni tekshirish")
 def r_check(s, uid, m):
-    ps = q("SELECT * FROM payments WHERE user_id=? AND status='pending' AND method='tc'", (uid,))
-    if not ps: return s.send(uid, "ℹ️ Kutilayotgan to'lov yo'q.", main_rows(uid))
+    ps = q("SELECT * FROM payments WHERE user_id=? AND status='pending' AND method IN ('checkout','inpay')", (uid,))
+    if not ps: return s.send(uid, tr("no_pending"), main_rows(uid))
     for p in ps:
         try: check_payment(p)
         except Exception: elog()
-    left = q("SELECT COUNT(*) c FROM payments WHERE user_id=? AND status='pending' AND method='tc'", (uid,), True)["c"]
-    if left: s.send(uid, "⏳ To'lov hali kelmadi. To'lagan bo'lsangiz, 1-2 daqiqadan so'ng qayta tekshiring.")
+    left = q("SELECT COUNT(*) c FROM payments WHERE user_id=? AND status='pending' AND method IN ('checkout','inpay')", (uid,), True)["c"]
+    if left: s.send(uid, tr("not_yet"))
 
 
-@route("💰 Balansim")
-def r_balance(s, uid, m):
-    s.send(uid, f"💰 Balans: <b>{money(U(uid)['balance'])}</b> so'm", main_rows(uid))
+@route("👤 Profilim")
+def r_profile(s, uid, m):
+    u, now = U(uid), time.time()
+    act = u["sub_until"] > now
+    until = f"{dt(u['sub_until'])} ({tr('days_left', d=int((u['sub_until'] - now) // 86400))})" if act else "—"
+    paid = q("SELECT 1 FROM payments WHERE user_id=? AND status='approved' LIMIT 1", (uid,), True)
+    cnt = lambda sql: q(sql, (uid,), True)[0]
+    ctx.lang = ulang(uid)
+    s.send(uid, tr("profile", id=uid, name=esc((u["name"] or "").strip() or "—"), lang_name=dict(LANGS).get(u["lang"], "—"), bal=money(u["balance"]),
+                   sub=tr("sub_active" if act else "sub_inactive"), until=until, kind=tr("kind_paid" if paid else "kind_free"),
+                   conns=cnt("SELECT COUNT(*) FROM conns WHERE user_id=?"), msgs=cnt("SELECT COUNT(*) FROM msgs WHERE owner=?"),
+                   refs=cnt("SELECT COUNT(*) FROM users WHERE referrer=?"),
+                   joined=time.strftime("%d.%m.%Y", time.localtime(u["joined"])) if u["joined"] else "—"),
+           [[("🌐 Tilni almashtirish", "primary")], [("💳 Balans to'ldirish", "success"), ("🏠 Menyu", "")]])
+
+
+@route("🌐 Tilni almashtirish")
+def r_lang(s, uid, m):
+    STATE[uid] = ("lang",)
+    ks = [n for _, n in LANGS]
+    s.send(uid, tr("lang_pick"), [ks[i:i + 2] for i in range(0, len(ks), 2)] + [[("🏠 Menyu", "")]])
+
+
+def lang_handle(s, uid, t, st):
+    """Til tanlash bosqichi. True — xabar shu yerda ishlatildi."""
+    names = {n: c for c, n in LANGS}
+    lb = match_label(t, list(names))
+    if not lb: return resolve(t) not in ROUTES and (s.send(uid, tr("lang_pick")) or True)
+    run("UPDATE users SET lang=? WHERE id=?", (names[lb], uid))
+    STATE.pop(uid, None)
+    ctx.lang = names[lb]
+    s.menu(uid, tr("lang_set"))
+    return True
 
 
 @route("📅 Obunam")
 def r_sub(s, uid, m):
     u = U(uid)
     n = q("SELECT COUNT(*) c FROM conns WHERE user_id=?", (uid,), True)["c"]
-    st = f"✅ Faol — {dt(u['sub_until'])} gacha" if u["sub_until"] > time.time() else "❌ Obuna yo'q"
-    s.send(uid, f"📅 Obuna: {st}\n🔗 Ulangan akkaunt: {n}", main_rows(uid))
+    st = tr("sub_on", until=dt(u["sub_until"])) if u["sub_until"] > time.time() else tr("sub_off")
+    s.send(uid, tr("sub_info", st=st, n=n), main_rows(uid))
 
 
 @route("🧾 To'lovlarim")
 def r_pay_history(s, uid, m):
     ps = q("SELECT * FROM payments WHERE user_id=? ORDER BY id DESC LIMIT 10", (uid,))
     ic = {"approved": "✅", "pending": "⏳", "rejected": "❌", "expired": "⌛", "failed": "⚠️"}
-    s.send(uid, "🧾 <b>So'nggi to'lovlar</b>\n" + ("\n".join(
-        f"{ic.get(p['status'], '•')} #{p['id']} — {money(p['amount'])} so'm ({time.strftime('%d.%m %H:%M', time.localtime(p['ts']))})"
-        for p in ps) or "—"), main_rows(uid))
+    lst = "\n".join(f"{ic.get(p['status'], '•')} #{p['id']} — {money(p['amount'])} ({time.strftime('%d.%m %H:%M', time.localtime(p['ts']))})" for p in ps) or "—"
+    s.send(uid, tr("pay_hist", list=lst), main_rows(uid))
 
 
 @route("🎁 Promokod")
 def r_promo(s, uid, m):
-    if g("promo_on") != "1": return s.send(uid, "🎁 Promokodlar hozircha o'chirilgan.", main_rows(uid))
+    if g("promo_on") != "1": return s.send(uid, tr("promo_off"), main_rows(uid))
     STATE[uid] = ("promo",)
-    s.send(uid, "🎁 Promokodni yuboring:", [[("🏠 Menyu", "")]])
+    s.send(uid, tr("promo_ask"), [[("🏠 Menyu", "")]])
 
 
 @route("🔗 Referal")
 def r_ref(s, uid, m):
-    if g("ref_on") != "1": return s.send(uid, "🔗 Referal dasturi hozircha o'chirilgan.", main_rows(uid))
+    if g("ref_on") != "1": return s.send(uid, "🔗 —", main_rows(uid))
     n = q("SELECT COUNT(*) c FROM users WHERE referrer=?", (uid,), True)["c"]
     rich_key(s, uid, "ref_text", main_rows(uid),
-             extra=f"\n\n🔗 Havolangiz:\nhttps://t.me/{s.username}?start=ref_{uid}\n\n👥 Taklif qilinganlar: {n}\n"
-                   f"🎁 Ularning har bir xarididan {g('ref_percent')}% balansingizga tushadi.")
+             extra=tr("ref_extra", link=f"https://t.me/{s.username}?start=ref_{uid}", n=n, pct=g("ref_percent")))
 
 
 @route("🤝 Hamkorlik")
 def r_partner(s, uid, m):
-    if not is_main() or g("partner_on") != "1": return s.send(uid, "🤝 Hamkorlik dasturi hozircha yopiq.", main_rows(uid))
+    if not is_main() or g("partner_on") != "1": return s.send(uid, "🤝 —", main_rows(uid))
     u = U(uid)
     if u["is_partner"]:
         return s.send(uid, "🤝 Siz hamkorsiz.\n«🤖 Mening botim» orqali o'z botingizni yarating — unda <b>⚙️ Admin panel</b> "
@@ -144,7 +164,7 @@ def r_partner(s, uid, m):
 def r_bepartner(s, uid, m):
     u, price = U(uid), num("partner_price")
     if not is_main() or g("partner_on") != "1" or u["is_partner"]: return s.menu(uid)
-    if u["balance"] < price: return s.send(uid, f"❌ Balans yetarli emas ({money(u['balance'])} / {money(price)}).")
+    if u["balance"] < price: return s.send(uid, f"❌ {money(u['balance'])} / {money(price)}")
     run("UPDATE users SET balance=balance-?, is_partner=1 WHERE id=?", (price, uid))
     s.send(uid, "🎉 Siz endi hamkorsiz! «🤖 Mening botim» tugmasini bosing.", main_rows(uid))
     log(f"🤝 Yangi hamkor: {uid}")
