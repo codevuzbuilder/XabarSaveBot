@@ -1,6 +1,7 @@
 """ui.py — tugma dizayni: rang, nom, premium emoji (ikonka), klaviatura va inline tugmalar, bosh menyu."""
 from collections import Counter
 from core import *
+from i18n import *
 
 
 # ----------------------------- tugma dizayni: rang, nom, premium emoji -----------------------------
@@ -26,6 +27,23 @@ def strip_lead(t): return _LEAD.sub("", t, 1) if _LEAD.match(t) else t
 def norm(e): return e.replace("\ufe0f", "").strip()
 
 
+INLINE = {"inline:connect": "📲 Botni ulash", "inline:bot": "🤖 Bot sahifasi"}
+
+
+def inline_default(key):
+    """Inline tugmalarning standart nomi (ichki kalit → ko'rinadigan matn)."""
+    if key in INLINE: return INLINE[key]
+    if key.startswith("inline:ch:"):
+        r = q("SELECT title FROM channels WHERE id=?", (key[10:],), True)
+        return f"📢 {r['title'][:28]}" if r else None
+
+
+def disp(label):
+    """Tugmaning hozirgi ko'rinadigan nomi (admin o'zgartirgan yoki standart)."""
+    r = q("SELECT new FROM btn_name WHERE orig=?", (label,), True)
+    return r["new"] if r else (inline_default(label) or label)
+
+
 def design():
     return ({r["orig"]: r["style"] for r in q("SELECT * FROM btn_style")},
             {r["orig"]: r["new"] for r in q("SELECT * FROM btn_name")},
@@ -49,7 +67,8 @@ def icon_for(label, text, icons, b):
 def _btn(label, st, des=None):
     b = cur()
     styles, names, icons = des or design()
-    text = names.get(label, label)
+    text = names.get(label)
+    if text is None: text = lab(inline_default(label) or label, cur_lang())
     btn = {"text": text, "style": styles.get(label) or st or "primary"}
     eid = icon_for(label, text, icons, b)
     if eid and (label in icons or strip_lead(text) not in _ambig()):
@@ -65,33 +84,41 @@ def kb(rows):
 
 
 def ikb(rows):
-    """Inline tugmalar: [(nom, url, rang), ...] qatorlari."""
+    """Inline (havolali) tugmalar. Admin o'zgartirgan URL bazadan olinadi, aks holda standart URL."""
     des = design()
-    return {"inline_keyboard": [[{**_btn(n, st, des), "url": url} for n, url, st in r] for r in rows]}
+    urls = {r["k"]: r["url"] for r in q("SELECT * FROM inline_urls")}
+    out = []
+    for r in rows:
+        line = []
+        for n, default_url, st in r:
+            line.append({**_btn(n, st, des), "url": urls.get(n, default_url)})
+        out.append(line)
+    return {"inline_keyboard": out}
 
 
 def resolve(t):
-    """Tugma matnini (nomi o'zgargan yoki premium emoji tufayli emojisiz kelgan bo'lsa ham) asl nomga qaytaradi."""
+    """Tugma matnini (nomi o'zgargan, tarjima qilingan yoki premium emoji tufayli emojisiz kelgan bo'lsa ham) asl nomga qaytaradi."""
     if t in ROUTES: return t
     names = {r["new"]: r["orig"] for r in q("SELECT * FROM btn_name")}
     if t in names: return names[t]
     ren = {r["orig"]: r["new"] for r in q("SELECT * FROM btn_name")}
     for orig in ROUTES:
         if strip_lead(ren.get(orig, orig)) == t: return orig
-    return t
+    return rev_labels().get(t, t)
 
 
 def match_label(t, labels):
-    """Dinamik tugmalar (tarix, hududlar) uchun: bosilgan matnga mos asl nomni topadi."""
+    """Dinamik tugmalar (tarix, hududlar, inline) uchun: bosilgan matnga mos asl nomni topadi."""
     ren = {r["orig"]: r["new"] for r in q("SELECT * FROM btn_name")}
     for l in labels:
-        sh = ren.get(l, l)
-        if t in (l, sh, strip_lead(l), strip_lead(sh)): return l
+        base = ren.get(l) or inline_default(l) or l
+        for sh in {base, lab(base, cur_lang())}:
+            if t in (l, sh, strip_lead(l), strip_lead(sh)): return l
 
 
 def main_rows(uid):
     rows = [[("📲 Botni ulash", "primary"), ("💎 Obuna olish", "success")],
-            [("💳 Balans to'ldirish", "success"), "💰 Balansim"],
+            [("💳 Balans to'ldirish", "success"), ("👤 Profilim", "primary")],
             ["📅 Obunam", "🧾 To'lovlarim"],
             [("🎁 Promokod", "primary"), ("🔗 Referal", "primary")]]
     if is_main(): rows.append([("🤝 Hamkorlik", "success"), ("🤖 Mening botim", "primary")])
